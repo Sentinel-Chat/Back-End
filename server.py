@@ -5,12 +5,12 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret'
 socketio = SocketIO(app, cors_allowed_origins ="*")
 
-'''
+# Handle sent messages from clients
 @socketio.on('message')
 def handle_message(message):
     print('Received message: ' + message)
     #emit('message', message, broadcast=True)
-'''
+
 
 # Handle 'login' messages from the client
 @socketio.on('login')  
@@ -27,6 +27,6 @@ def handle_connection():
 def handle_connection():
     print('Client Disconnected')
 
-#replace "IP" with your ip
+#replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="IP")
+    socketio.run(app, host="YOUR_IP_ADDRESS")
