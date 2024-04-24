@@ -5,9 +5,9 @@ from flask_cors import CORS  # Import CORS from flask_cors
 
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})  # Allow CORS for specific routes
 app.config['SECRET_KEY'] = 'secret'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*")  # Enable CORS for SocketIO
 
 conn = sqlite3.connect('messaging_app.db')
 conn.execute("PRAGMA foreign_keys = ON;")
@@ -28,6 +28,28 @@ def signup():
         return jsonify({'message': 'User created successfully'}), 201
     except Exception as e:
         return jsonify({'error :(': str(e)}), 500
+    
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+
+    # Query the database to retrieve the user's information based on the username
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM User WHERE username=?", (username,))
+    user = cursor.fetchone()
+
+    if user:
+        # If user exists, return user information
+        user_info = {
+            'user_id': user[0],
+            'username': user[1],
+            'password': user[2]
+        }
+        return jsonify(user_info), 200
+    else:
+        # If user doesn't exist, return an error message
+        return jsonify({'error': 'User not found'}), 404
 
 
 # Handle sent messages from clients
@@ -39,7 +61,12 @@ def handle_message(message):
 # Handle 'login' messages from the client
 @socketio.on('login')
 def handle_login(data):
-    print('User logged in:', data)
+    print('User logged in:', data['username'])
+    
+# Handle 'login' messages from the client
+@socketio.on('logout')
+def handle_logout(data):
+    print('User logout as:', data['username'])
 
 
 # Print connect message on succesful connection
