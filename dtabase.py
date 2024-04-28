@@ -9,19 +9,15 @@ conn.execute("PRAGMA foreign_keys = ON;")
 # Create tables with foreign key constraints
 conn.execute('''
 CREATE TABLE IF NOT EXISTS User (
-    user_id INTEGER PRIMARY KEY,
-    username CHAR(50) NOT NULL UNIQUE,
-    password CHAR(50) NOT NULL,
-    profile_pic BLOB
+    username CHAR(50) PRIMARY KEY,
+    password CHAR(50) NOT NULL
 );
 ''')
 
 conn.execute('''
 CREATE TABLE IF NOT EXISTS ChatRoom (
     chat_room_id INTEGER PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    created_at DATE NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES User (user_id)
+    created_at DATE NOT NULL
 );
 ''')
 
@@ -32,18 +28,18 @@ CREATE TABLE IF NOT EXISTS Messages (
     chat_room_id INTEGER NOT NULL,
     created_at DATE NOT NULL,
     text CHAR(250),
-    status BOOLEAN NOT NULL,
-    FOREIGN KEY (sender) REFERENCES User (user_id),
+    FOREIGN KEY (sender) REFERENCES User (username),
     FOREIGN KEY (chat_room_id) REFERENCES ChatRoom (chat_room_id)
 );
 ''')
 
 conn.execute('''
-CREATE TABLE IF NOT EXISTS Attachments (
-    attachment_id INTEGER PRIMARY KEY,
-    message_id INTEGER NOT NULL,
-    data BLOB NOT NULL,
-    FOREIGN KEY (message_id) REFERENCES Messages (message_id)
+CREATE TABLE IF NOT EXISTS ChatRoomMembers (
+    chat_room_members_id INTEGER NOT NULL,
+    username INTEGER NOT NULL,
+    chat_room_id INTEGER NOT NULL,
+    FOREIGN KEY (username) REFERENCES User (username),
+    FOREIGN KEY (chat_room_id) REFERENCES ChatRoom (chat_room_id)
 );
 ''')
 

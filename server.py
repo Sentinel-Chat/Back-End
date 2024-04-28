@@ -19,7 +19,7 @@ def signup():
     username = data.get('username')
     password = data.get('password')
 
-    print('Received message: ' + username + password)  # Access the 'text' property directly
+    print('Account Created for: ' + username) 
 
     # Insert new user into the User table
     try:
@@ -42,9 +42,8 @@ def login():
     if user:
         # If user exists, return user information
         user_info = {
-            'user_id': user[0],
-            'username': user[1],
-            'password': user[2]
+            'username': user[0],
+            'password': user[1]
         }
         return jsonify(user_info), 200
     else:
@@ -72,15 +71,15 @@ def handle_logout(data):
 # Print connect message on succesful connection
 @socketio.on('connect')
 def handle_connection():
-    print('New Client Connected')
+    print('*')
 
 
 # Print disconnect message when user disconnects
-@socketio.on('disconnect')
-def handle_connection():
-    print('Client Disconnected')
+# @socketio.on('disconnect')
+# def handle_connection():
+#     print('')
 
 
 # replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="192.168.254.12", allow_unsafe_werkzeug=True)
+    socketio.run(app, host="172.20.10.2", allow_unsafe_werkzeug=True)
