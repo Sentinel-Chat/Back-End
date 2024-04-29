@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS User (
 conn.execute('''
 CREATE TABLE IF NOT EXISTS ChatRoom (
     chat_room_id INTEGER PRIMARY KEY,
-    created_at DATE NOT NULL
+    created_at DATE NOT NULL,
+    nickname CHAR(50)
 );
 ''')
 
@@ -35,8 +36,8 @@ CREATE TABLE IF NOT EXISTS Messages (
 
 conn.execute('''
 CREATE TABLE IF NOT EXISTS ChatRoomMembers (
-    chat_room_members_id INTEGER NOT NULL,
-    username INTEGER NOT NULL,
+    chat_room_members_id INTEGER PRIMARY KEY,
+    username CHAR(50) NOT NULL,
     chat_room_id INTEGER NOT NULL,
     FOREIGN KEY (username) REFERENCES User (username),
     FOREIGN KEY (chat_room_id) REFERENCES ChatRoom (chat_room_id)
