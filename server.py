@@ -90,6 +90,35 @@ def create_chatroom():
         # Return an error message if an exception occurs
         print("Error:", e)
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/api/create_chatroom_returnID', methods=['POST'])
+def create_chatroom_returnID():
+    try:
+        print("Creating a new chatroom...")
+        # Extract data from the request body
+        data = request.json
+        print("Received data:", data)
+        created_at = data.get('created_at')
+        nickname = data.get('nickname')
+        
+        # Execute SQL to insert a new chatroom
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO ChatRoom (created_at, nickname) VALUES (?, ?)", (created_at, nickname))
+        conn.commit()
+
+        # Get the ID of the newly inserted chatroom
+        chatroom_id = cursor.lastrowid
+
+        # Close the cursor
+        cursor.close()
+
+        # Return the ID of the newly created chatroom
+        return jsonify({'chatroom_id': chatroom_id}), 201
+    except Exception as e:
+        # Return an error message if an exception occurs
+        print("Error:", e)
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/get_chatroomsWithUser', methods=['POST'])
 def get_chatroomsWithUser():
@@ -101,7 +130,7 @@ def get_chatroomsWithUser():
         # Execute SQL to fetch all chat rooms that the user is a part of
         cursor = conn.cursor()
         cursor.execute("SELECT ChatRoom.chat_room_id, ChatRoom.created_at, ChatRoom.nickname FROM ChatRoom JOIN ChatRoomMembers ON ChatRoom.chat_room_id = ChatRoomMembers.chat_room_id WHERE ChatRoomMembers.username=?", (username,))
-        cursor.execute("SELECT * FROM ChatRoomMembers")
+        # cursor.execute("SELECT * FROM ChatRoomMembers")
         chatrooms = cursor.fetchall()
         
         # Close the cursor
@@ -194,6 +223,18 @@ def insert_message():
         return jsonify({'message': 'Message inserted successfully'}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+# Endpoint to get all usernames from the users table
+@app.route('/api/get_all_usernames', methods=['GET'])
+def get_all_usernames():
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM User")
+        usernames = cursor.fetchall()
+        cursor.close()
+        return jsonify({'usernames': [username[0] for username in usernames]}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # Handle 'login' messages from the client
 @socketio.on('login')
@@ -220,4 +261,4 @@ def handle_connection():
 
 # replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="172.20.10.2")
+    socketio.run(app, host="192.168.254.12")
