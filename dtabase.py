@@ -44,6 +44,15 @@ CREATE TABLE IF NOT EXISTS ChatRoomMembers (
 );
 ''')
 
+conn.execute('''
+CREATE TABLE IF NOT EXISTS Files (
+    file_id INTEGER PRIMARY KEY,
+    message_id INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    FOREIGN KEY (message_id) REFERENCES Messages (message_id)
+);
+''')
+
 # Commit the changes and close the connection
 conn.commit()
 conn.close()

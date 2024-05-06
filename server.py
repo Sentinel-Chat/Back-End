@@ -2,16 +2,30 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 import sqlite3
 from flask_cors import CORS  # Import CORS from flask_cors
-
+from flask import g
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})  # Allow CORS for specific routes
 app.config['SECRET_KEY'] = 'secret'
 socketio = SocketIO(app, cors_allowed_origins="*")  # Enable CORS for SocketIO
 
-conn = sqlite3.connect('messaging_app.db')
-conn.execute("PRAGMA foreign_keys = ON;")
+#conn = sqlite3.connect('messaging_app.db')
+#conn.execute("PRAGMA foreign_keys = ON;")
 
+# Function to get SQLite connection
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect('messaging_app.db')
+        db.execute("PRAGMA foreign_keys = ON;")
+    return db
+
+# Function to close SQLite connection
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
 
 @app.route('/api/signup', methods=['POST'])
 def signup():
@@ -23,10 +37,12 @@ def signup():
 
     # Insert new user into the User table
     try:
+        conn = get_db()
         conn.execute("INSERT INTO User (username, password) VALUES (?, ?)", (username, password))
         conn.commit()
         return jsonify({'message': 'User created successfully'}), 201
     except Exception as e:
+        print("error: ", e)
         return jsonify({'error :(': str(e)}), 500
     
 @app.route('/api/login', methods=['POST'])
@@ -35,6 +51,7 @@ def login():
     username = data.get('username')
 
     # Query the database to retrieve the user's information based on the username
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM User WHERE username=?", (username,))
     user = cursor.fetchone()
@@ -59,6 +76,7 @@ def handle_message(message):
     
     # Insert the message into the Messages table
     try:
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO Messages (sender, chat_room_id, created_at, text) VALUES (?, ?, ?, ?)",
                        (message['sender'], message['chat_room_id'], message['created_at'], message['text']))
@@ -77,6 +95,7 @@ def create_chatroom():
         nickname = data.get('nickname')
         
         # Execute SQL to insert a new chatroom
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO ChatRoom (created_at, nickname) VALUES (?, ?)", (created_at, nickname))
         conn.commit()
@@ -99,6 +118,7 @@ def get_chatroomsWithUser():
         username = data.get('username')
         
         # Execute SQL to fetch all chat rooms that the user is a part of
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT ChatRoom.chat_room_id, ChatRoom.created_at, ChatRoom.nickname FROM ChatRoom JOIN ChatRoomMembers ON ChatRoom.chat_room_id = ChatRoomMembers.chat_room_id WHERE ChatRoomMembers.username=?", (username,))
         cursor.execute("SELECT * FROM ChatRoomMembers")
@@ -123,6 +143,7 @@ def add_user_to_chatroom():
         chat_room_id = data.get('chat_room_id')
         
         # Execute SQL to insert the user into the chat room
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO ChatRoomMembers (username, chat_room_id) VALUES (?, ?)", (username, chat_room_id))
         conn.commit()
@@ -144,6 +165,7 @@ def get_messages_by_chatroom_id():
         chatroom_id = data.get('chatroom_id')
                 
         # Execute SQL to fetch messages by chatroom ID
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM Messages WHERE chat_room_id = ?", (chatroom_id,))
         messages = cursor.fetchall()
@@ -181,18 +203,54 @@ def insert_message():
 
         print(data)
         
+        if (text == ""):
+            text = "File: "
+
         # Execute SQL to insert the new message
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO Messages (text, sender, created_at, chat_room_id) VALUES (?, ?, ?, ?)",
                        (text, sender, created_at, chat_room_id))
         conn.commit()
 
+        # Get messageId
+        message_id = cursor.lastrowid
+
+        print(message_id)
+
         # Close the cursor
         cursor.close()
 
-        # Return a success message
-        return jsonify({'message': 'Message inserted successfully'}), 201
+        # Return a success message and messageId
+        return jsonify({'messageId': message_id}), 201
     except Exception as e:
+        print("error:", e)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/insert_file', methods=['POST'])
+def insert_file():
+    try:
+        # Extract data from the request
+        file_data = request.files['file']
+        message_id = request.form.get['messageId']
+
+        # Save the file data to local folder
+        file_path = '/Users/joseph/Chat-Backend/Back-End/files/' + file_data.filename
+        file_data.save(file_path)
+
+        # Insert the file information into the database
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Files (message_id, file_path) VALUES (?, ?)",
+                       (message_id, file_path))
+        conn.commit()
+
+        # Close the cursor
+        cursor.close()
+
+        return jsonify({'message': 'File inserted successfully'}), 201
+    except Exception as e:
+        print("error:", e)
         return jsonify({'error': str(e)}), 500
 
 # Handle 'login' messages from the client
@@ -220,4 +278,4 @@ def handle_connection():
 
 # replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="172.20.10.2")
+    socketio.run(app, host="192.168.254.12")
