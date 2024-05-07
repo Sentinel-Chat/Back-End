@@ -1,5 +1,6 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit
+from datetime import datetime
 import sqlite3
 from flask_cors import CORS  # Import CORS from flask_cors
 from flask import g
@@ -42,8 +43,10 @@ def signup():
         conn.execute("INSERT INTO User (username, password) VALUES (?, ?)", (username, password))
         conn.commit()
         return jsonify({'message': 'User created successfully'}), 201
+    except sqlite3.IntegrityError as e:
+        return jsonify({'error': 'Username already taken'}), 409
     except Exception as e:
-        return jsonify({'error :(': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
     
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -66,10 +69,8 @@ def login():
         }
         return jsonify(user_info), 200
     else:
-        print('ERRROR IS HERRRREEEEE')
         # If user doesn't exist, return an error message
         return jsonify({'error': 'User not found'}), 200
-
 
 # Handle sent messages from clients
 @socketio.on('message')
@@ -81,8 +82,10 @@ def handle_message(message):
     try:
         conn = get_db()
         cursor = conn.cursor()
+
+        
         cursor.execute("INSERT INTO Messages (sender, chat_room_id, created_at, text) VALUES (?, ?, ?, ?)",
-                       (message['sender'], message['chat_room_id'], message['created_at'], message['text']))
+                       (message['sender'], message['chat_room_id'], datetime.strptime(message['created_at'], '%A, %B %d, %Y at %I:%M %p').date(), message['text']))
         conn.commit()
     except Exception as e:
         print("Error inserting message:", str(e))
@@ -96,6 +99,9 @@ def create_chatroom():
         print("Received data:", data)
         created_at = data.get('created_at')
         nickname = data.get('nickname')
+
+        if nickname == 'General':
+            return redirect(url_for('login'))
         
         # Execute SQL to insert a new chatroom
         conn = get_db()
@@ -234,13 +240,21 @@ def insert_message():
         created_at = data.get('created_at')
         chat_room_id = data.get('chat_room_id')  # Assuming chat_room_id is also provided
 
-        print(data)
+        created_at = created_at.split(',')
+        created_at[1] = created_at[1].split(' ')
+        created_at[2] = created_at[2].split(' ')
+
+        year = created_at[2][1]
+        month = created_at[1][1]
+        day = created_at[1][2]
+
+        date = datetime.date(year, month, day)
         
         # Execute SQL to insert the new message
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO Messages (text, sender, created_at, chat_room_id) VALUES (?, ?, ?, ?)",
-                       (text, sender, created_at, chat_room_id))
+                       (text, sender, date, chat_room_id))
         conn.commit()
 
         # Close the cursor
