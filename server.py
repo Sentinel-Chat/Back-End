@@ -47,6 +47,7 @@ def signup():
     
 @app.route('/api/login', methods=['POST'])
 def login():
+    print('starting login')
     data = request.json
     username = data.get('username')
 
@@ -54,6 +55,7 @@ def login():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM User WHERE username=?", (username,))
+
     user = cursor.fetchone()
 
     if user:
@@ -64,8 +66,9 @@ def login():
         }
         return jsonify(user_info), 200
     else:
+        print('ERRROR IS HERRRREEEEE')
         # If user doesn't exist, return an error message
-        return jsonify({'error': 'User not found'}), 404
+        return jsonify({'error': 'User not found'}), 200
 
 
 # Handle sent messages from clients
@@ -286,4 +289,4 @@ def handle_connection():
 
 # replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="192.168.254.12")
+    socketio.run(app, host="192.168.1.152")
