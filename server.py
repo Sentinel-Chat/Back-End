@@ -1,16 +1,32 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit
+from datetime import datetime
 import sqlite3
 from flask_cors import CORS  # Import CORS from flask_cors
-
+from flask import g
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})  # Allow CORS for specific routes
 app.config['SECRET_KEY'] = 'secret'
 socketio = SocketIO(app, cors_allowed_origins="*")  # Enable CORS for SocketIO
 
-conn = sqlite3.connect('messaging_app.db')
-conn.execute("PRAGMA foreign_keys = ON;")
+#conn = sqlite3.connect('messaging_app.db')
+#conn.execute("PRAGMA foreign_keys = ON;")
+# Function to get SQLite connection
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect('messaging_app.db')
+        db.execute("PRAGMA foreign_keys = ON;")
+    return db
+
+# Function to close SQLite connection
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
+
 
 
 @app.route('/api/signup', methods=['POST'])
@@ -23,20 +39,26 @@ def signup():
 
     # Insert new user into the User table
     try:
+        conn = get_db()
         conn.execute("INSERT INTO User (username, password) VALUES (?, ?)", (username, password))
         conn.commit()
         return jsonify({'message': 'User created successfully'}), 201
+    except sqlite3.IntegrityError as e:
+        return jsonify({'error': 'Username already taken'}), 409
     except Exception as e:
-        return jsonify({'error :(': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
     
 @app.route('/api/login', methods=['POST'])
 def login():
+    print('starting login')
     data = request.json
     username = data.get('username')
 
     # Query the database to retrieve the user's information based on the username
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM User WHERE username=?", (username,))
+
     user = cursor.fetchone()
 
     if user:
@@ -48,8 +70,7 @@ def login():
         return jsonify(user_info), 200
     else:
         # If user doesn't exist, return an error message
-        return jsonify({'error': 'User not found'}), 404
-
+        return jsonify({'error': 'User not found'}), 200
 
 # Handle sent messages from clients
 @socketio.on('message')
@@ -59,9 +80,12 @@ def handle_message(message):
     
     # Insert the message into the Messages table
     try:
+        conn = get_db()
         cursor = conn.cursor()
+
+        
         cursor.execute("INSERT INTO Messages (sender, chat_room_id, created_at, text) VALUES (?, ?, ?, ?)",
-                       (message['sender'], message['chat_room_id'], message['created_at'], message['text']))
+                       (message['sender'], message['chat_room_id'], datetime.strptime(message['created_at'], '%A, %B %d, %Y at %I:%M %p').date(), message['text']))
         conn.commit()
     except Exception as e:
         print("Error inserting message:", str(e))
@@ -75,8 +99,12 @@ def create_chatroom():
         print("Received data:", data)
         created_at = data.get('created_at')
         nickname = data.get('nickname')
+
+        if nickname == 'General':
+            return redirect(url_for('login'))
         
         # Execute SQL to insert a new chatroom
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO ChatRoom (created_at, nickname) VALUES (?, ?)", (created_at, nickname))
         conn.commit()
@@ -102,6 +130,7 @@ def create_chatroom_returnID():
         nickname = data.get('nickname')
         
         # Execute SQL to insert a new chatroom
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO ChatRoom (created_at, nickname) VALUES (?, ?)", (created_at, nickname))
         conn.commit()
@@ -128,6 +157,7 @@ def get_chatroomsWithUser():
         username = data.get('username')
         
         # Execute SQL to fetch all chat rooms that the user is a part of
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT ChatRoom.chat_room_id, ChatRoom.created_at, ChatRoom.nickname FROM ChatRoom JOIN ChatRoomMembers ON ChatRoom.chat_room_id = ChatRoomMembers.chat_room_id WHERE ChatRoomMembers.username=?", (username,))
         # cursor.execute("SELECT * FROM ChatRoomMembers")
@@ -152,6 +182,7 @@ def add_user_to_chatroom():
         chat_room_id = data.get('chat_room_id')
         
         # Execute SQL to insert the user into the chat room
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO ChatRoomMembers (username, chat_room_id) VALUES (?, ?)", (username, chat_room_id))
         conn.commit()
@@ -173,6 +204,7 @@ def get_messages_by_chatroom_id():
         chatroom_id = data.get('chatroom_id')
                 
         # Execute SQL to fetch messages by chatroom ID
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM Messages WHERE chat_room_id = ?", (chatroom_id,))
         messages = cursor.fetchall()
@@ -208,12 +240,21 @@ def insert_message():
         created_at = data.get('created_at')
         chat_room_id = data.get('chat_room_id')  # Assuming chat_room_id is also provided
 
-        print(data)
+        created_at = created_at.split(',')
+        created_at[1] = created_at[1].split(' ')
+        created_at[2] = created_at[2].split(' ')
+
+        year = created_at[2][1]
+        month = created_at[1][1]
+        day = created_at[1][2]
+
+        date = datetime.date(year, month, day)
         
         # Execute SQL to insert the new message
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO Messages (text, sender, created_at, chat_room_id) VALUES (?, ?, ?, ?)",
-                       (text, sender, created_at, chat_room_id))
+                       (text, sender, date, chat_room_id))
         conn.commit()
 
         # Close the cursor
@@ -228,6 +269,7 @@ def insert_message():
 @app.route('/api/get_all_usernames', methods=['GET'])
 def get_all_usernames():
     try:
+        conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT username FROM User")
         usernames = cursor.fetchall()
@@ -261,4 +303,4 @@ def handle_connection():
 
 # replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="192.168.254.12")
+    socketio.run(app, host="192.168.1.152")
