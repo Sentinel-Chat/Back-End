@@ -1,17 +1,44 @@
-from flask import Flask, request, jsonify, redirect, url_for
+from flask import Flask, json, request, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit
 from datetime import datetime
 import sqlite3
 from flask_cors import CORS  # Import CORS from flask_cors
 from flask import g
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+import base64
+import os
+
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})  # Allow CORS for specific routes
 app.config['SECRET_KEY'] = 'secret'
 socketio = SocketIO(app, cors_allowed_origins="*")  # Enable CORS for SocketIO
 
-#conn = sqlite3.connect('messaging_app.db')
-#conn.execute("PRAGMA foreign_keys = ON;")
+# conn = sqlite3.connect('messaging_app.db')
+# conn.execute("PRAGMA foreign_keys = ON;")
+
+# Generate RSA key pair for the server
+server_private_key = rsa.generate_private_key(
+    public_exponent=65537,
+    key_size=2048,
+    backend=default_backend()
+)
+server_public_key = server_private_key.public_key()
+
+# Serialize server's public key
+server_public_key_bytes = server_public_key.public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo
+)
+
+# Dictionary to store session keys for each client (temp solution)
+client_session_keys = {}
+
 # Function to get SQLite connection
 def get_db():
     db = getattr(g, '_database', None)
@@ -50,9 +77,15 @@ def signup():
     
 @app.route('/api/login', methods=['POST'])
 def login():
-    print('starting login')
+    print('Starting login')
     data = request.json
     username = data.get('username')
+    user_public_key = data.get('userPublicKey')  # Ensure the key name matches the client-side key name
+    
+    user_public_key = load_pem_public_key(user_public_key.encode())
+    
+    print("printing user public key:")
+    # print(user_public_key)  # Print the received public key to verify
 
     # Query the database to retrieve the user's information based on the username
     conn = get_db()
@@ -62,33 +95,64 @@ def login():
     user = cursor.fetchone()
 
     if user:
+        # Generate a session key for the client
+        session_key = os.urandom(32)
+        print(session_key)
+        
+        client_session_keys[username] = session_key
+
+        # Encrypt the session key with the client's public key
+        # Ensure you have the necessary imports for encryption
+        encrypted_session_key = user_public_key.encrypt(
+            session_key,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+        
+        # print(encrypted_session_key);
+
         # If user exists, return user information
         user_info = {
             'username': user[0],
-            'password': user[1]
+            'password': user[1],
+            'sessionKey': base64.b64encode(encrypted_session_key).decode()
         }
         return jsonify(user_info), 200
     else:
         # If user doesn't exist, return an error message
-        return jsonify({'error': 'User not found'}), 200
+        return jsonify({'error': 'User not found'}), 404
 
-# Handle sent messages from clients
+
 @socketio.on('message')
-def handle_message(message):
-    print('Received message: ' + message['text'])  # Access the 'text' property directly
-    emit('message', message, broadcast=True)
-    
-    # Insert the message into the Messages table
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
+def handle_message(data):
+    print('Received encrypted message:', data)
 
-        
-        cursor.execute("INSERT INTO Messages (sender, chat_room_id, created_at, text) VALUES (?, ?, ?, ?)",
-                       (message['sender'], message['chat_room_id'], datetime.strptime(message['created_at'], '%A, %B %d, %Y at %I:%M %p').date(), message['text']))
-        conn.commit()
-    except Exception as e:
-        print("Error inserting message:", str(e))
+    # Decrypt the encrypted data using the session key
+    session_key = client_session_keys[data['sender']]
+    decryptor = Cipher(algorithms.AES(session_key), modes.CTR(data['iv']), backend=default_backend()).decryptor()
+    decrypted_data = decryptor.update(base64.b64decode(data['encryptedData'])) + decryptor.finalize()
+    decrypted_data = json.loads(decrypted_data)
+
+    # Decrypt the message using the decrypted message encryption key
+    message_decryption_key = session_key.decrypt(decrypted_data['encryptedMessageKey'])
+    message_decryptor = Cipher(algorithms.AES(message_decryption_key), modes.CTR(decrypted_data['iv']), backend=default_backend()).decryptor()
+    decrypted_message = message_decryptor.update(decrypted_data['encryptedMessage']) + message_decryptor.finalize()
+
+    print('Decrypted message:', decrypted_message.decode())
+
+    # Insert the message into the Messages table
+    # try:
+    #     conn = get_db()
+    #     cursor = conn.cursor()
+
+    #     cursor.execute("INSERT INTO Messages (sender, chat_room_id, created_at, text) VALUES (?, ?, ?, ?)",
+    #                    (data['sender'], data['chat_room_id'], datetime.strptime(data['created_at'], '%A, %B %d, %Y at %I:%M %p').date(), decrypted_message.decode()))
+    #     conn.commit()
+    # except Exception as e:
+    #     print("Error inserting message:", str(e))
         
 @app.route('/api/create_chatroom', methods=['POST'])
 def create_chatroom():
@@ -303,4 +367,4 @@ def handle_connection():
 
 # replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="192.168.1.152")
+    socketio.run(app, host="192.168.254.12", port=5000)
