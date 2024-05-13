@@ -11,7 +11,11 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 import base64
+from base64 import b64decode
+
+
 import os
 
 app = Flask(__name__)
@@ -97,7 +101,22 @@ def login():
     if user:
         # Generate a session key for the client
         session_key = os.urandom(32)
-        print(session_key)
+        
+        # Derive encryption key using HKDF
+        def derive_key(session_key):
+            salt = b'unique_salt'  # Ensure to use a unique salt
+            kdf = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,  # Length of the derived key
+                salt=salt,
+                info=b'encryption_key',
+                backend=default_backend()
+            )
+            return kdf.derive(session_key)
+        
+        session_key = derive_key(session_key)
+        
+        print(base64.b64encode(session_key).decode())
         
         client_session_keys[username] = session_key
 
@@ -128,20 +147,38 @@ def login():
 
 @socketio.on('message')
 def handle_message(data):
-    print('Received encrypted message:', data)
+    try:
+        iv = base64.b64decode(data['iv'])
+        encrypted_message = base64.b64decode(data['encryptedMessage'])
+        auth_tag = base64.b64decode(data['authTag'])
 
-    # Decrypt the encrypted data using the session key
-    session_key = client_session_keys[data['sender']]
-    decryptor = Cipher(algorithms.AES(session_key), modes.CTR(data['iv']), backend=default_backend()).decryptor()
-    decrypted_data = decryptor.update(base64.b64decode(data['encryptedData'])) + decryptor.finalize()
-    decrypted_data = json.loads(decrypted_data)
+        sender = data['sender']
+        session_key = client_session_keys.get(sender)
 
-    # Decrypt the message using the decrypted message encryption key
-    message_decryption_key = session_key.decrypt(decrypted_data['encryptedMessageKey'])
-    message_decryptor = Cipher(algorithms.AES(message_decryption_key), modes.CTR(decrypted_data['iv']), backend=default_backend()).decryptor()
-    decrypted_message = message_decryptor.update(decrypted_data['encryptedMessage']) + message_decryptor.finalize()
+        if session_key:
+            try:
+                decryptor = Cipher(algorithms.AES(session_key), modes.GCM(iv, auth_tag), backend=default_backend()).decryptor()
+                decrypted_data = decryptor.update(encrypted_message) + decryptor.finalize()
 
-    print('Decrypted message:', decrypted_message.decode())
+                # Deserialize the decrypted data (assuming it's serialized)
+                decrypted_message = serialization.load_pem_public_key(decrypted_data, backend=default_backend())
+
+                print('Decrypted message:', decrypted_message)
+
+                # Insert the decrypted message into the database
+                # Your database insertion logic goes here
+
+            except Exception as e:
+                print('Decryption error:', e)
+        else:
+            print('Session key not found for sender:', sender)
+    except Exception as e:
+        print('Error decoding data:', e)
+
+
+
+
+
 
     # Insert the message into the Messages table
     # try:
