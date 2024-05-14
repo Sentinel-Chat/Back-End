@@ -15,6 +15,9 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 import base64
 from base64 import b64decode
 
+from binascii import unhexlify
+
+
 
 import os
 
@@ -145,35 +148,48 @@ def login():
         return jsonify({'error': 'User not found'}), 404
 
 
+
 @socketio.on('message')
 def handle_message(data):
     try:
+        # Decode the base64 encoded IV and authentication tag
         iv = base64.b64decode(data['iv'])
-        encrypted_message = base64.b64decode(data['encryptedMessage'])
         auth_tag = base64.b64decode(data['authTag'])
 
+        # Decode the encrypted message from base64 to bytes
+        encrypted_message = base64.b64decode(data['encryptedMessage'])
+
+        # Retrieve the session key for the sender
         sender = data['sender']
         session_key = client_session_keys.get(sender)
 
         if session_key:
             try:
+                # Decrypt the encrypted message using the session key, IV, and authentication tag
                 decryptor = Cipher(algorithms.AES(session_key), modes.GCM(iv, auth_tag), backend=default_backend()).decryptor()
                 decrypted_data = decryptor.update(encrypted_message) + decryptor.finalize()
 
-                # Deserialize the decrypted data (assuming it's serialized)
-                decrypted_message = serialization.load_pem_public_key(decrypted_data, backend=default_backend())
+                # Deserialize the decrypted data
+                decrypted_message = decrypted_data.decode('utf-8')  # Assuming the decrypted data is a string
 
                 print('Decrypted message:', decrypted_message)
+                
+                # Convert the JSON string to a Python dictionary
+                decrypted_message_obj = json.loads(decrypted_message)
+                
+                emit("message", decrypted_message_obj)
 
                 # Insert the decrypted message into the database
-                # Your database insertion logic goes here
-
+                
+                
             except Exception as e:
                 print('Decryption error:', e)
         else:
             print('Session key not found for sender:', sender)
     except Exception as e:
         print('Error decoding data:', e)
+
+
 
 
 
