@@ -16,6 +16,8 @@ import base64
 from base64 import b64decode
 
 from binascii import unhexlify
+from cryptography.hazmat.primitives import padding as symmetric_padding
+
 
 
 
@@ -177,11 +179,49 @@ def handle_message(data):
                 # Convert the JSON string to a Python dictionary
                 decrypted_message_obj = json.loads(decrypted_message)
                 
-                emit("message", decrypted_message_obj)
+                # Insert the decrypted message into the Messages table
+                # try:
+                conn = get_db()
+                cursor = conn.cursor()
+                
+                print(decrypted_message_obj)
 
-                # Insert the decrypted message into the database
+                cursor.execute("INSERT INTO Messages (sender, chat_room_id, created_at, text) VALUES (?, ?, ?, ?)",
+                                   (decrypted_message_obj['sender'], decrypted_message_obj['chat_room_id'], decrypted_message_obj['created_at'], decrypted_message_obj['text']))
+                conn.commit()
+                print("messaged inserted to database")
+                # except Exception as e:
+                #     print("Error inserting message:", str(e))
                 
                 
+                # Encrypt the message to send to recipients
+                
+
+                # Padding the decrypted message to match the block size
+                padder = symmetric_padding.PKCS7(128).padder()
+                padded_data = padder.update(decrypted_message.encode('utf-8')) + padder.finalize()
+
+                # Encrypt the padded message using the same IV and session key
+                encryptor = Cipher(algorithms.AES(session_key), modes.GCM(iv), backend=default_backend()).encryptor()
+                ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+
+                # Base64 encode the IV, authentication tag, and encrypted message
+                iv_encrypted = base64.b64encode(iv).decode('utf-8')
+                auth_tag_encrypted = base64.b64encode(encryptor.tag).decode('utf-8')
+                encrypted_message = base64.b64encode(ciphertext).decode('utf-8')
+
+                # Prepare the data to be sent back
+                encrypted_data = {
+                    'iv': iv_encrypted,
+                    'authTag': auth_tag_encrypted,
+                    'encryptedMessage': encrypted_message,
+                    'sender': sender
+                }
+                
+                print("works until here")
+
+                # Emit the encrypted data
+                emit("message", encrypted_data)
             except Exception as e:
                 print('Decryption error:', e)
         else:
@@ -191,21 +231,6 @@ def handle_message(data):
 
 
 
-
-
-
-
-
-    # Insert the message into the Messages table
-    # try:
-    #     conn = get_db()
-    #     cursor = conn.cursor()
-
-    #     cursor.execute("INSERT INTO Messages (sender, chat_room_id, created_at, text) VALUES (?, ?, ?, ?)",
-    #                    (data['sender'], data['chat_room_id'], datetime.strptime(data['created_at'], '%A, %B %d, %Y at %I:%M %p').date(), decrypted_message.decode()))
-    #     conn.commit()
-    # except Exception as e:
-    #     print("Error inserting message:", str(e))
         
 @app.route('/api/create_chatroom', methods=['POST'])
 def create_chatroom():
@@ -347,40 +372,40 @@ def get_messages_by_chatroom_id():
         return jsonify({'error': str(e)}), 500
 
     
-@app.route('/api/insert_message', methods=['POST'])
-def insert_message():
-    try:
-        # Extract data from the request body
-        data = request.json
-        text = data.get('text')
-        sender = data.get('sender')
-        created_at = data.get('created_at')
-        chat_room_id = data.get('chat_room_id')  # Assuming chat_room_id is also provided
+# @app.route('/api/insert_message', methods=['POST'])
+# def insert_message():
+#     try:
+#         # Extract data from the request body
+#         data = request.json
+#         text = data.get('text')
+#         sender = data.get('sender')
+#         created_at = data.get('created_at')
+#         chat_room_id = data.get('chat_room_id')  # Assuming chat_room_id is also provided
 
-        created_at = created_at.split(',')
-        created_at[1] = created_at[1].split(' ')
-        created_at[2] = created_at[2].split(' ')
+#         created_at = created_at.split(',')
+#         created_at[1] = created_at[1].split(' ')
+#         created_at[2] = created_at[2].split(' ')
 
-        year = created_at[2][1]
-        month = created_at[1][1]
-        day = created_at[1][2]
+#         year = created_at[2][1]
+#         month = created_at[1][1]
+#         day = created_at[1][2]
 
-        date = datetime.date(year, month, day)
+#         date = datetime.date(year, month, day)
         
-        # Execute SQL to insert the new message
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO Messages (text, sender, created_at, chat_room_id) VALUES (?, ?, ?, ?)",
-                       (text, sender, date, chat_room_id))
-        conn.commit()
+#         # Execute SQL to insert the new message
+#         conn = get_db()
+#         cursor = conn.cursor()
+#         cursor.execute("INSERT INTO Messages (text, sender, created_at, chat_room_id) VALUES (?, ?, ?, ?)",
+#                        (text, sender, date, chat_room_id))
+#         conn.commit()
 
-        # Close the cursor
-        cursor.close()
+#         # Close the cursor
+#         cursor.close()
 
-        # Return a success message
-        return jsonify({'message': 'Message inserted successfully'}), 201
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+#         # Return a success message
+#         return jsonify({'message': 'Message inserted successfully'}), 201
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
     
 # Endpoint to get all usernames from the users table
 @app.route('/api/get_all_usernames', methods=['GET'])
