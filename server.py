@@ -93,7 +93,7 @@ def login():
     
     user_public_key = load_pem_public_key(user_public_key.encode())
     
-    print("printing user public key:")
+    # print("printing user public key:")
     # print(user_public_key)  # Print the received public key to verify
 
     # Query the database to retrieve the user's information based on the username
@@ -121,7 +121,7 @@ def login():
         
         session_key = derive_key(session_key)
         
-        print(base64.b64encode(session_key).decode())
+        # print(base64.b64encode(session_key).decode())
         
         client_session_keys[username] = session_key
 
@@ -209,8 +209,6 @@ def handle_message(data):
                 
                 
                 # Encrypt the message to send to recipients
-                
-
                 # Padding the decrypted message to match the block size
                 padder = symmetric_padding.PKCS7(128).padder()
                 padded_data = padder.update(decrypted_message.encode('utf-8')) + padder.finalize()
@@ -229,11 +227,12 @@ def handle_message(data):
                     'iv': iv_encrypted,
                     'authTag': auth_tag_encrypted,
                     'encryptedMessage': encrypted_message,
-                    'sender': sender
+                    'sender': sender,
+                    'decryption': session_key
                 }
                 
-                print("works until here")
-                print(decrypted_message_obj)
+                # print("Decrypted Message:")
+                # print(decrypted_message_obj)
 
                 # Emit the encrypted data
                 emit("message", decrypted_message_obj, broadcast=True)
