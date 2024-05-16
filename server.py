@@ -150,6 +150,22 @@ def login():
         return jsonify({'error': 'User not found'}), 200
 
 
+@app.route('/api/chatrooms/get_chatroom', methods=['GET'])
+def get_chatroom():
+    try:
+        # Check if the chatroom with the given ID exists
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM ChatRoom WHERE chat_room_id = 1")
+        chatroom = cursor.fetchone()
+        cursor.close()
+
+        if chatroom:
+            return jsonify({'exists': True}), 200
+        else:
+            return jsonify({'exists': False}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @socketio.on('message')
 def handle_message(data):
@@ -241,8 +257,8 @@ def create_chatroom():
         created_at = data.get('created_at')
         nickname = data.get('nickname')
 
-        if nickname == 'General':
-            return redirect(url_for('login'))
+        # if nickname == 'General':
+        #     return redirect(url_for('login'))
         
         # Execute SQL to insert a new chatroom
         conn = get_db()
@@ -301,7 +317,6 @@ def get_chatroomsWithUser():
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT ChatRoom.chat_room_id, ChatRoom.created_at, ChatRoom.nickname FROM ChatRoom JOIN ChatRoomMembers ON ChatRoom.chat_room_id = ChatRoomMembers.chat_room_id WHERE ChatRoomMembers.username=?", (username,))
-        # cursor.execute("SELECT * FROM ChatRoomMembers")
         chatrooms = cursor.fetchall()
         
         # Close the cursor
