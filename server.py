@@ -147,7 +147,7 @@ def login():
         return jsonify(user_info), 200
     else:
         # If user doesn't exist, return an error message
-        return jsonify({'error': 'User not found'}), 404
+        return jsonify({'error': 'User not found'}), 200
 
 
 
@@ -183,8 +183,6 @@ def handle_message(data):
                 # try:
                 conn = get_db()
                 cursor = conn.cursor()
-                
-                print(decrypted_message_obj)
 
                 cursor.execute("INSERT INTO Messages (sender, chat_room_id, created_at, text) VALUES (?, ?, ?, ?)",
                                    (decrypted_message_obj['sender'], decrypted_message_obj['chat_room_id'], decrypted_message_obj['created_at'], decrypted_message_obj['text']))
@@ -445,4 +443,4 @@ def handle_connection():
 
 # replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="192.168.254.12", port=5000)
+    socketio.run(app, host="localhost", port=5000)
