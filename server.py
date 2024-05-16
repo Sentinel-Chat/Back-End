@@ -217,9 +217,10 @@ def handle_message(data):
                 }
                 
                 print("works until here")
+                print(decrypted_message_obj)
 
                 # Emit the encrypted data
-                emit("message", encrypted_data)
+                emit("message", decrypted_message_obj, broadcast=True)
             except Exception as e:
                 print('Decryption error:', e)
         else:
@@ -443,4 +444,4 @@ def handle_connection():
 
 # replace "YOUR_IP_ADDRESS" with your ip
 if __name__ == '__main__':
-    socketio.run(app, host="localhost", port=5000)
+    socketio.run(app, host="192.168.254.12", port=5000)
